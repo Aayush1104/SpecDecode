@@ -1,0 +1,29 @@
+model:
+  target_model: "gpt2-medium"
+  draft_model: "distilgpt2"
+  target_dtype: "float16"
+  draft_dtype: "float16"
+  device: "auto"
+  backend: "huggingface"
+
+decoding:
+  speculation_length: 5
+  temperature: 1.0
+  max_new_tokens: 256
+  top_k: 0
+  top_p: 1.0
+
+eval:
+  datasets:
+    - "humaneval"
+    - "gsm8k"
+    - "truthfulqa"
+  num_samples: 100
+  output_dir: "results/full"
+  seed: 42
+  warmup_steps: 3
+
+logging:
+  level: "INFO"
+  use_wandb: true
+  wandb_project: "specdecode"
