@@ -1,0 +1,92 @@
+"""YAML config loader with dataclass-based configs."""
+
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Optional
+
+import yaml
+
+
+@dataclass
+class ModelConfig:
+    target_model: str = "gpt2"
+    draft_model: str = "distilgpt2"
+    target_dtype: str = "float16"
+    draft_dtype: str = "float16"
+    device: str = "auto"
+    backend: str = "huggingface"  # "huggingface" or "vllm"
+
+
+@dataclass
+class DecodingConfig:
+    speculation_length: int = 5
+    temperature: float = 1.0
+    max_new_tokens: int = 128
+    top_k: int = 0  # 0 means disabled
+    top_p: float = 1.0  # 1.0 means disabled
+
+
+@dataclass
+class EvalConfig:
+    datasets: list[str] = field(default_factory=lambda: ["humaneval"])
+    num_samples: int = 100
+    output_dir: str = "results"
+    seed: int = 42
+    warmup_steps: int = 3
+
+
+@dataclass
+class LoggingConfig:
+    level: str = "INFO"
+    use_wandb: bool = False
+    wandb_project: str = "specdecode"
+    wandb_run_name: Optional[str] = None
+
+
+@dataclass
+class ExperimentConfig:
+    model: ModelConfig = field(default_factory=ModelConfig)
+    decoding: DecodingConfig = field(default_factory=DecodingConfig)
+    eval: EvalConfig = field(default_factory=EvalConfig)
+    logging: LoggingConfig = field(default_factory=LoggingConfig)
+
+
+def _apply_dict_to_dataclass(dc, d: dict):
+    """Recursively apply dict values to a dataclass instance."""
+    for key, value in d.items():
+        if not hasattr(dc, key):
+            raise ValueError(f"Unknown config key: {key}")
+        current = getattr(dc, key)
+        if isinstance(value, dict) and hasattr(current, "__dataclass_fields__"):
+            _apply_dict_to_dataclass(current, value)
+        else:
+            setattr(dc, key, value)
+
+
+def load_config(path: str | Path) -> ExperimentConfig:
+    """Load an ExperimentConfig from a YAML file."""
+    path = Path(path)
+    if not path.exists():
+        raise FileNotFoundError(f"Config file not found: {path}")
+
+    with open(path) as f:
+        raw = yaml.safe_load(f)
+
+    config = ExperimentConfig()
+    if raw:
+        _apply_dict_to_dataclass(config, raw)
+    return config
+
+
+def merge_configs(*paths: str | Path) -> ExperimentConfig:
+    """Load and merge multiple config files (later files override earlier)."""
+    config = ExperimentConfig()
+    for path in paths:
+        path = Path(path)
+        if not path.exists():
+            raise FileNotFoundError(f"Config file not found: {path}")
+        with open(path) as f:
+            raw = yaml.safe_load(f)
+        if raw:
+            _apply_dict_to_dataclass(config, raw)
+    return config
