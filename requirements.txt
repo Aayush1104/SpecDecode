@@ -1,0 +1,14 @@
+torch>=2.1
+transformers>=4.35
+accelerate
+datasets
+wandb
+vllm
+flash-attn
+triton
+pyyaml
+tqdm
+numpy
+matplotlib
+seaborn
+pytest
