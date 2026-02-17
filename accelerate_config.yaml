@@ -1,0 +1,25 @@
+compute_environment: LOCAL_MACHINE
+distributed_type: DEEPSPEED
+deepspeed_config:
+  deepspeed_multinode_launcher: standard
+  gradient_accumulation_steps: 4
+  zero_optimization:
+    stage: 2
+    offload_optimizer:
+      device: none
+    offload_param:
+      device: none
+    allgather_partitions: true
+    allgather_bucket_size: 500000000
+    reduce_scatter: true
+    reduce_bucket_size: 500000000
+    overlap_comm: true
+  gradient_clipping: 1.0
+  train_batch_size: auto
+  train_micro_batch_size_per_gpu: 4
+  bf16:
+    enabled: true
+machine_rank: 0
+main_training_function: main
+num_machines: 1
+num_processes: 8

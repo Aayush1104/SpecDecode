@@ -1,0 +1,44 @@
+model:
+  target_model: "Qwen/Qwen2.5-7B"
+  draft_model: "Qwen/Qwen2.5-1.5B"
+  target_dtype: "bfloat16"
+  draft_dtype: "bfloat16"
+  device: "auto"
+  backend: "huggingface"
+
+data:
+  domain: "code"
+  dataset_name: "bigcode/the-stack-dedup"
+  dataset_subset: "data/python"
+  streaming: true
+  max_tokens: 10000000
+  max_seq_length: 2048
+  val_split: 0.05
+  seed: 42
+
+training:
+  output_dir: "checkpoints/draft-code-distilled"
+  num_train_steps: 50000
+  per_device_batch_size: 4
+  gradient_accumulation_steps: 4
+  learning_rate: 3.0e-4
+  lr_scheduler: "cosine"
+  warmup_steps: 1000
+  weight_decay: 0.01
+  max_grad_norm: 1.0
+  dtype: "bfloat16"
+  save_steps: 5000
+  eval_steps: 1000
+  log_steps: 100
+
+distillation:
+  enabled: true
+  teacher_model: "Qwen/Qwen2.5-7B"
+  teacher_dtype: "bfloat16"
+  alpha: 0.5
+  temperature: 2.0
+
+logging:
+  level: "INFO"
+  use_wandb: true
+  wandb_project: "specdecode-training"
