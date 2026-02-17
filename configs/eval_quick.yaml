@@ -1,0 +1,27 @@
+model:
+  target_model: "gpt2"
+  draft_model: "distilgpt2"
+  target_dtype: "float32"
+  draft_dtype: "float32"
+  device: "auto"
+  backend: "huggingface"
+
+decoding:
+  speculation_length: 5
+  temperature: 1.0
+  max_new_tokens: 64
+  top_k: 0
+  top_p: 1.0
+
+eval:
+  datasets:
+    - "humaneval"
+    - "gsm8k"
+  num_samples: 10
+  output_dir: "results/quick"
+  seed: 42
+  warmup_steps: 1
+
+logging:
+  level: "INFO"
+  use_wandb: false
