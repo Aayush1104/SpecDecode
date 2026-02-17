@@ -44,11 +44,54 @@ class LoggingConfig:
 
 
 @dataclass
+class DataConfig:
+    domain: str = "code"
+    dataset_name: str = "bigcode/the-stack-dedup"
+    dataset_subset: Optional[str] = None
+    streaming: bool = True
+    max_tokens: int = 10_000_000
+    max_seq_length: int = 2048
+    val_split: float = 0.05
+    num_workers: int = 4
+    seed: int = 42
+
+
+@dataclass
+class TrainingConfig:
+    output_dir: str = "checkpoints/draft"
+    num_train_steps: int = 50_000
+    per_device_batch_size: int = 4
+    gradient_accumulation_steps: int = 4
+    learning_rate: float = 3e-4
+    lr_scheduler: str = "cosine"
+    warmup_steps: int = 1000
+    weight_decay: float = 0.01
+    max_grad_norm: float = 1.0
+    dtype: str = "bfloat16"
+    save_steps: int = 5000
+    eval_steps: int = 1000
+    log_steps: int = 100
+    resume_from: Optional[str] = None
+
+
+@dataclass
+class DistillationConfig:
+    enabled: bool = False
+    teacher_model: str = "Qwen/Qwen2.5-7B"
+    teacher_dtype: str = "bfloat16"
+    alpha: float = 0.5
+    temperature: float = 2.0
+
+
+@dataclass
 class ExperimentConfig:
     model: ModelConfig = field(default_factory=ModelConfig)
     decoding: DecodingConfig = field(default_factory=DecodingConfig)
     eval: EvalConfig = field(default_factory=EvalConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
+    data: DataConfig = field(default_factory=DataConfig)
+    training: TrainingConfig = field(default_factory=TrainingConfig)
+    distillation: DistillationConfig = field(default_factory=DistillationConfig)
 
 
 def _apply_dict_to_dataclass(dc, d: dict):
