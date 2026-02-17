@@ -84,6 +84,30 @@ class DistillationConfig:
 
 
 @dataclass
+class RouterConfig:
+    enabled: bool = False
+    embedding_model: str = "sentence-transformers/all-mpnet-base-v2"
+    embedding_dim: int = 768
+    draft_models: dict = field(default_factory=lambda: {
+        "code": "checkpoints/draft-code/best",
+        "chat": "checkpoints/draft-chat/best",
+        "reasoning": "checkpoints/draft-reasoning/best",
+    })
+    hidden_dim: int = 256
+    num_samples: int = 10_000
+    num_epochs: int = 5
+    learning_rate: float = 1e-3
+    batch_size: int = 64
+    router_checkpoint: str = "checkpoints/router/best.pt"
+    training_data_path: str = "data/router_training.json"
+    collection_datasets: list = field(default_factory=lambda: [
+        "humaneval", "gsm8k", "mt_bench", "truthfulqa"
+    ])
+    collection_num_samples: int = 100
+    collection_max_new_tokens: int = 64
+
+
+@dataclass
 class ExperimentConfig:
     model: ModelConfig = field(default_factory=ModelConfig)
     decoding: DecodingConfig = field(default_factory=DecodingConfig)
@@ -92,6 +116,7 @@ class ExperimentConfig:
     data: DataConfig = field(default_factory=DataConfig)
     training: TrainingConfig = field(default_factory=TrainingConfig)
     distillation: DistillationConfig = field(default_factory=DistillationConfig)
+    router: RouterConfig = field(default_factory=RouterConfig)
 
 
 def _apply_dict_to_dataclass(dc, d: dict):

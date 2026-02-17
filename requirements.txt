@@ -12,4 +12,5 @@ tqdm
 numpy
 matplotlib
 seaborn
+sentence-transformers>=2.2
 pytest
