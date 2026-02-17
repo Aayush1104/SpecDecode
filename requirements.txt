@@ -2,6 +2,7 @@ torch>=2.1
 transformers>=4.35
 accelerate
 datasets
+deepspeed>=0.12
 wandb
 vllm
 flash-attn
