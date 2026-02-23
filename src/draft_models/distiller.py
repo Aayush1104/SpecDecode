@@ -92,6 +92,11 @@ class DistillationTrainer:
             teacher_out = self.teacher_model(input_ids=input_ids)
             teacher_logits = teacher_out.logits
 
+        # Align vocab sizes (e.g., Qwen2.5-7B has 152064, 1.5B has 151936)
+        min_vocab = min(student_logits.shape[-1], teacher_logits.shape[-1])
+        student_logits = student_logits[..., :min_vocab]
+        teacher_logits = teacher_logits[..., :min_vocab]
+
         # KL divergence loss
         T = self.temperature
         kd_loss = F.kl_div(

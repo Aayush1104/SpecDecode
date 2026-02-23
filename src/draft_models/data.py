@@ -13,8 +13,8 @@ from src.utils.config import DataConfig
 # Domain → (dataset_name, subset, text_field, concat_fields)
 DOMAIN_REGISTRY = {
     "code": {
-        "dataset_name": "bigcode/the-stack-dedup",
-        "subset": "data/python",
+        "dataset_name": "transformersbook/codeparrot",
+        "subset": None,
         "text_field": "content",
     },
     "chat": {
@@ -73,7 +73,8 @@ class DomainDataPipeline:
         if domain in DOMAIN_REGISTRY:
             info = DOMAIN_REGISTRY[domain].copy()
             # Allow config overrides
-            if self.config.dataset_name != "bigcode/the-stack-dedup":
+            default_name = DOMAIN_REGISTRY[domain]["dataset_name"]
+            if self.config.dataset_name != default_name:
                 info["dataset_name"] = self.config.dataset_name
             if self.config.dataset_subset is not None:
                 info["subset"] = self.config.dataset_subset

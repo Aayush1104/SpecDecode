@@ -126,8 +126,8 @@ class TestDomainDataPipeline:
         tokenizer = FakeTokenizer()
         pipeline = DomainDataPipeline(config, tokenizer)
         info = pipeline._get_domain_info()
-        assert info["dataset_name"] == "bigcode/the-stack-dedup"
-        assert info["subset"] == "data/python"
+        assert info["dataset_name"] == "transformersbook/codeparrot"
+        assert info["subset"] is None
 
     def test_get_domain_info_custom(self):
         """Unknown domain should fall back to config values."""

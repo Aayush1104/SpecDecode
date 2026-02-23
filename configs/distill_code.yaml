@@ -8,8 +8,8 @@ model:
 
 data:
   domain: "code"
-  dataset_name: "bigcode/the-stack-dedup"
-  dataset_subset: "data/python"
+  dataset_name: "transformersbook/codeparrot"
+  dataset_subset: null
   streaming: true
   max_tokens: 10000000
   max_seq_length: 2048
@@ -40,5 +40,5 @@ distillation:
 
 logging:
   level: "INFO"
-  use_wandb: true
+  use_wandb: false
   wandb_project: "specdecode-training"

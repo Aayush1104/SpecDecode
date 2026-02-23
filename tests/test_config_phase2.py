@@ -18,7 +18,7 @@ class TestDataConfigDefaults:
     def test_defaults(self):
         dc = DataConfig()
         assert dc.domain == "code"
-        assert dc.dataset_name == "bigcode/the-stack-dedup"
+        assert dc.dataset_name == "transformersbook/codeparrot"
         assert dc.dataset_subset is None
         assert dc.streaming is True
         assert dc.max_tokens == 10_000_000

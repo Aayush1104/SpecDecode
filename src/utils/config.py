@@ -46,7 +46,7 @@ class LoggingConfig:
 @dataclass
 class DataConfig:
     domain: str = "code"
-    dataset_name: str = "bigcode/the-stack-dedup"
+    dataset_name: str = "transformersbook/codeparrot"
     dataset_subset: Optional[str] = None
     streaming: bool = True
     max_tokens: int = 10_000_000
