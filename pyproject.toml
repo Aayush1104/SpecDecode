@@ -7,6 +7,7 @@ name = "specdecode"
 version = "0.1.0"
 description = "Production speculative decoding system for 2-3x LLM inference speedup"
 readme = "README.md"
+license = {text = "MIT"}
 requires-python = ">=3.10"
 dependencies = [
     "torch>=2.1",
@@ -19,12 +20,18 @@ dependencies = [
     "numpy",
     "matplotlib",
     "seaborn",
+    "sentence-transformers>=2.2",
 ]
 
 [project.optional-dependencies]
 vllm = ["vllm"]
 flash = ["flash-attn", "triton"]
+demo = ["gradio>=4.0"]
 dev = ["pytest", "pytest-timeout"]
+all = ["vllm", "flash-attn", "triton", "gradio>=4.0"]
+
+[project.scripts]
+specdecode = "src.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
