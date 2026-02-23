@@ -108,6 +108,19 @@ class RouterConfig:
 
 
 @dataclass
+class BenchmarkConfig:
+    experiments: list[str] = field(default_factory=lambda: [
+        "baseline", "generic_draft", "specialized_drafts",
+        "adaptive_routing", "ablation_K"
+    ])
+    speculation_lengths: list[int] = field(default_factory=lambda: [3, 5, 7])
+    generic_draft_model: str = "distilgpt2"
+    output_dir: str = "results/benchmark"
+    profile: bool = False
+    warmup_samples: int = 3
+
+
+@dataclass
 class ExperimentConfig:
     model: ModelConfig = field(default_factory=ModelConfig)
     decoding: DecodingConfig = field(default_factory=DecodingConfig)
@@ -117,6 +130,7 @@ class ExperimentConfig:
     training: TrainingConfig = field(default_factory=TrainingConfig)
     distillation: DistillationConfig = field(default_factory=DistillationConfig)
     router: RouterConfig = field(default_factory=RouterConfig)
+    benchmark: BenchmarkConfig = field(default_factory=BenchmarkConfig)
 
 
 def _apply_dict_to_dataclass(dc, d: dict):
