@@ -1,4 +1,5 @@
 from src.evaluation.analysis import analyze_benchmark, generate_report
+from src.evaluation.benchmark import BenchmarkRunner
 from src.evaluation.datasets import load_dataset_prompts
 from src.evaluation.evaluator import Evaluator
 from src.evaluation.quality import compute_quality_metrics
