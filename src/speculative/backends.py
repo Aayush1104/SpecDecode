@@ -1,6 +1,7 @@
 """Model backend abstraction for speculative decoding."""
 
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional
 
 import torch
@@ -79,16 +80,39 @@ class HuggingFaceBackend(ModelBackend):
         }
         torch_dtype = dtype_map.get(dtype, torch.float16)
 
+        # Resolve local paths for from_pretrained
+        local_path = Path(model_name)
+        load_name = str(local_path) if local_path.exists() else model_name
+
         self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
+            load_name,
             torch_dtype=torch_dtype,
             device_map=self.device if self.device == "auto" else None,
         )
         if self.device != "auto":
             self.model = self.model.to(self.device)
         self.model.eval()
+        self._device = next(self.model.parameters()).device
 
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        # For local checkpoints, tokenizer may be in the same dir or parent
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(load_name)
+        except OSError:
+            # Fallback: try parent directories for tokenizer
+            if local_path.exists():
+                for parent in [local_path.parent, local_path.parent.parent]:
+                    try:
+                        self.tokenizer = AutoTokenizer.from_pretrained(str(parent))
+                        break
+                    except OSError:
+                        continue
+                else:
+                    raise OSError(
+                        f"Could not find tokenizer for local checkpoint '{model_name}'. "
+                        f"Ensure tokenizer files are saved alongside the model."
+                    )
+            else:
+                raise
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -107,8 +131,7 @@ class HuggingFaceBackend(ModelBackend):
         temperature: float = 1.0,
         past_key_values=None,
     ) -> tuple[Tensor, Tensor, object]:
-        device = next(self.model.parameters()).device
-        input_ids = input_ids.to(device)
+        input_ids = input_ids.to(self._device)
 
         all_tokens = []
         all_logits = []
@@ -144,8 +167,7 @@ class HuggingFaceBackend(ModelBackend):
         input_ids: Tensor,
         past_key_values=None,
     ) -> tuple[Tensor, object]:
-        device = next(self.model.parameters()).device
-        input_ids = input_ids.to(device)
+        input_ids = input_ids.to(self._device)
 
         outputs = self.model(
             input_ids,

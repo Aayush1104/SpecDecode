@@ -39,14 +39,9 @@ def trim_kv_cache(past_key_values, target_length: int):
 
 
 def _trim_dynamic_cache(cache: DynamicCache, target_length: int) -> DynamicCache:
-    """Trim a DynamicCache to target_length."""
-    new_cache = DynamicCache()
-    for layer_idx in range(len(cache)):
-        layer = cache.layers[layer_idx]
-        key = layer.keys[:, :, :target_length, :]
-        value = layer.values[:, :, :target_length, :]
-        new_cache.update(key, value, layer_idx)
-    return new_cache
+    """Trim a DynamicCache to target_length in-place."""
+    cache.crop(target_length)
+    return cache
 
 
 def get_kv_cache_length(past_key_values) -> int:
