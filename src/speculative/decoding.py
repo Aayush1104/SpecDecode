@@ -1,5 +1,7 @@
 """Main speculative decoding loop and standard decoding baseline."""
 
+import time
+
 import torch
 from torch import Tensor
 
@@ -26,6 +28,7 @@ def speculative_decode(
     max_new_tokens: int,
     speculation_length: int = 5,
     temperature: float = 1.0,
+    profile: bool = False,
 ) -> tuple[Tensor, DecodingMetrics]:
     """Run speculative decoding.
 
@@ -76,6 +79,9 @@ def speculative_decode(
             metrics.total_steps += 1
 
             # === DRAFT PHASE ===
+            if profile:
+                _t0 = time.perf_counter()
+
             # Generate K tokens from the draft model
             draft_token_list = []
             draft_logit_list = [next_draft_logit]  # logit that generates draft_token[0]
@@ -95,10 +101,16 @@ def speculative_decode(
             draft_logits = torch.cat(draft_logit_list, dim=1)   # (batch, K, vocab)
             metrics.draft_tokens += K
 
+            if profile:
+                metrics.draft_time += time.perf_counter() - _t0
+
             # State: draft_kv at kv_len + K - 1
             # (K-1 forwards; first token was from cached logit)
 
             # === VERIFICATION PHASE ===
+            if profile:
+                _t0 = time.perf_counter()
+
             # Target scores all K draft tokens in one forward pass
             target_step_out, target_kv = target_model.forward(
                 draft_tokens, past_key_values=target_kv
@@ -120,7 +132,12 @@ def speculative_decode(
             # Bonus logit for the all-accepted case (at position kv_len + K)
             bonus_logits = target_step_out[:, K-1:K, :]  # (batch, 1, vocab)
 
+            if profile:
+                metrics.verify_time += time.perf_counter() - _t0
+
             # === REJECTION SAMPLING ===
+            if profile:
+                _t0 = time.perf_counter()
             _, num_accepted, bonus_tokens = rejection_sample(
                 target_logits=target_verify,
                 draft_logits=draft_logits,
@@ -132,12 +149,18 @@ def speculative_decode(
             n_acc = num_accepted[0].item()
             metrics.accepted_tokens += n_acc
 
+            if profile:
+                metrics.sampling_time += time.perf_counter() - _t0
+
             # === COLLECT TOKENS ===
             for i in range(n_acc):
                 generated.append(draft_tokens[:, i:i+1])
             generated.append(bonus_tokens[:1].unsqueeze(1))
 
             # === KV CACHE CLEANUP ===
+            if profile:
+                _t0 = time.perf_counter()
+
             # Goal: restore invariant — both caches at kv_len + n_acc + 1,
             # with logits for the next position.
 
@@ -166,6 +189,9 @@ def speculative_decode(
             next_target_logit = target_bonus_out[:, -1:, :]
             next_draft_logit = draft_bonus_out[:, -1:, :]
             kv_len = trim_to + 1  # = kv_len + n_acc + 1
+
+            if profile:
+                metrics.overhead_time += time.perf_counter() - _t0
 
     metrics.latency_seconds = timer.elapsed
     metrics.total_tokens = len(generated)
