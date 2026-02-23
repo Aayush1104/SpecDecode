@@ -1,0 +1,36 @@
+model:
+  target_model: "Qwen/Qwen2.5-7B"
+  target_dtype: "bfloat16"
+  draft_model: "distilgpt2"
+  device: "auto"
+  backend: "huggingface"
+
+decoding:
+  speculation_length: 5
+  temperature: 1.0
+  max_new_tokens: 128
+
+eval:
+  datasets: ["humaneval", "gsm8k", "mt_bench", "truthfulqa"]
+  num_samples: 100
+  output_dir: "results/benchmark"
+  seed: 42
+
+router:
+  enabled: true
+  draft_models:
+    code: "checkpoints/draft-code/best"
+    chat: "checkpoints/draft-chat/best"
+    reasoning: "checkpoints/draft-reasoning/best"
+  router_checkpoint: "checkpoints/router/best.pt"
+
+benchmark:
+  experiments: ["baseline", "generic_draft", "specialized_drafts", "adaptive_routing", "ablation_K"]
+  speculation_lengths: [3, 5, 7]
+  generic_draft_model: "distilgpt2"
+  output_dir: "results/benchmark"
+  profile: false
+
+logging:
+  level: "INFO"
+  use_wandb: false
