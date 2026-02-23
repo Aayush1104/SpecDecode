@@ -63,6 +63,7 @@ def route_and_decode(
     speculation_length: int = 5,
     temperature: float = 1.0,
     draft_names: list[str] | None = None,
+    profile: bool = False,
 ) -> tuple[Tensor, DecodingMetrics, str]:
     """Route a prompt to the best draft model and run speculative decoding.
 
@@ -112,6 +113,7 @@ def route_and_decode(
         max_new_tokens=max_new_tokens,
         speculation_length=speculation_length,
         temperature=temperature,
+        profile=profile,
     )
 
     return output_ids, metrics, selected_name
