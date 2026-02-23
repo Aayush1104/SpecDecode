@@ -39,8 +39,24 @@ def rejection_sample(
         num_accepted: Number of accepted draft tokens per batch element (batch,)
         bonus_tokens: Bonus token (batch,)
     """
-    batch_size, K, vocab_size = target_logits.shape
+    batch_size, K, target_vocab = target_logits.shape
+    draft_vocab = draft_logits.shape[-1]
     device = target_logits.device
+
+    # Align vocab dimensions if models have different padding (e.g., Qwen 152064 vs 151936)
+    if target_vocab != draft_vocab:
+        vocab_size = max(target_vocab, draft_vocab)
+        if target_vocab < vocab_size:
+            pad = target_logits.new_full((batch_size, K, vocab_size - target_vocab), float("-inf"))
+            target_logits = torch.cat([target_logits, pad], dim=-1)
+            if bonus_logits is not None:
+                pad_b = bonus_logits.new_full((batch_size, 1, vocab_size - target_vocab), float("-inf"))
+                bonus_logits = torch.cat([bonus_logits, pad_b], dim=-1)
+        if draft_vocab < vocab_size:
+            pad = draft_logits.new_full((batch_size, K, vocab_size - draft_vocab), float("-inf"))
+            draft_logits = torch.cat([draft_logits, pad], dim=-1)
+    else:
+        vocab_size = target_vocab
 
     # Apply temperature and compute probabilities
     if temperature > 0:

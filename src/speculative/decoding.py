@@ -32,16 +32,17 @@ def speculative_decode(
 ) -> tuple[Tensor, DecodingMetrics]:
     """Run speculative decoding.
 
-    Invariant maintained at each iteration start:
-    - Both KV caches are at the same length (kv_len)
-    - next_target_logit holds target's logit for the next position
-    - next_draft_logit holds draft's logit for the next position
+    Optimized algorithm that merges the bonus token's target forward into the
+    next iteration's verification pass, reducing target model calls from 2 to 1
+    per iteration.
 
-    Algorithm per iteration:
-    1. Draft model generates K tokens (first from cached logit, rest autoregressively)
-    2. Target model scores all K tokens in one forward pass
-    3. Rejection sampling accepts/rejects draft tokens
-    4. KV caches trimmed and bonus token forwarded to restore invariant
+    Invariant at iteration start:
+    - draft_kv at kv_len, target_kv at kv_len - 1 (one behind, missing bonus)
+    - pending_bonus: the bonus token that target hasn't processed yet
+    - next_draft_logit: draft's logit for position kv_len
+
+    Exception: first iteration has both caches at kv_len and next_target_logit
+    cached from prompt processing.
 
     Args:
         target_model: The large target model
@@ -56,6 +57,26 @@ def speculative_decode(
     """
     batch_size = input_ids.shape[0]
     prompt_len = input_ids.shape[1]
+
+    # Validate vocabulary compatibility
+    target_vocab = target_model.get_vocab_size()
+    draft_vocab = draft_model.get_vocab_size()
+    max_input_id = input_ids.max().item()
+    if max_input_id >= draft_vocab:
+        raise ValueError(
+            f"Input contains token ID {max_input_id} but draft model vocabulary "
+            f"size is only {draft_vocab}. Both models must share the same "
+            f"tokenizer. Use a draft model from the same model family "
+            f"(e.g., Qwen2.5-0.5B as draft for Qwen2.5-7B)."
+        )
+    # Allow small padding differences (e.g., 152064 vs 151936 in Qwen family)
+    # but flag large mismatches that indicate different tokenizers
+    if abs(target_vocab - draft_vocab) > max(1024, target_vocab * 0.02):
+        raise ValueError(
+            f"Vocabulary size mismatch: target has {target_vocab} tokens, "
+            f"draft has {draft_vocab} tokens. Both models must share the same "
+            f"tokenizer (e.g., GPT-2 family together, Qwen family together)."
+        )
 
     metrics = DecodingMetrics()
     reset_peak_memory()
@@ -72,10 +93,13 @@ def speculative_decode(
     next_draft_logit = draft_out[:, -1:, :]    # (batch, 1, vocab)
 
     generated = []
+    n_generated = 0
+    first_iteration = True
+    pending_bonus = None  # bonus token target hasn't seen yet
 
     with cuda_timer() as timer:
-        while len(generated) < max_new_tokens:
-            K = min(speculation_length, max_new_tokens - len(generated))
+        while n_generated < max_new_tokens:
+            K = min(speculation_length, max_new_tokens - n_generated)
             metrics.total_steps += 1
 
             # === DRAFT PHASE ===
@@ -111,26 +135,46 @@ def speculative_decode(
             if profile:
                 _t0 = time.perf_counter()
 
-            # Target scores all K draft tokens in one forward pass
-            target_step_out, target_kv = target_model.forward(
-                draft_tokens, past_key_values=target_kv
-            )
-            # target_kv now at kv_len + K
-            # target_step_out[:, i, :] = target logit after seeing context + draft_tokens[:i+1]
-            #   = prediction for the position AFTER draft_tokens[i]
-
-            # Build verification logits (K logits, one per draft token):
-            # draft_token[0] verified by next_target_logit (cached, at position kv_len)
-            # draft_token[i>0] verified by target_step_out[:, i-1, :] (at position kv_len+i)
-            if K > 1:
-                target_verify = torch.cat(
-                    [next_target_logit, target_step_out[:, :K-1, :]], dim=1
+            if first_iteration:
+                # First iteration: target_kv at kv_len, we have next_target_logit
+                # Forward K draft tokens through target
+                target_step_out, target_kv = target_model.forward(
+                    draft_tokens, past_key_values=target_kv
                 )
-            else:
-                target_verify = next_target_logit  # (batch, 1, vocab)
+                # target_kv now at kv_len + K
 
-            # Bonus logit for the all-accepted case (at position kv_len + K)
-            bonus_logits = target_step_out[:, K-1:K, :]  # (batch, 1, vocab)
+                # Build verification logits:
+                # draft_token[0] verified by next_target_logit (cached)
+                # draft_token[i>0] verified by target_step_out[:, i-1, :]
+                if K > 1:
+                    target_verify = torch.cat(
+                        [next_target_logit, target_step_out[:, :K-1, :]], dim=1
+                    )
+                else:
+                    target_verify = next_target_logit  # (batch, 1, vocab)
+
+                # Bonus logit for the all-accepted case
+                bonus_logits = target_step_out[:, K-1:K, :]  # (batch, 1, vocab)
+                first_iteration = False
+            else:
+                # Subsequent iterations: target_kv at kv_len - 1 (missing bonus)
+                # Forward [bonus, draft_tokens] through target in ONE call
+                verify_input = torch.cat(
+                    [pending_bonus[:1].unsqueeze(1), draft_tokens], dim=1
+                )  # (batch, K+1)
+                target_step_out, target_kv = target_model.forward(
+                    verify_input, past_key_values=target_kv
+                )
+                # target_kv now at (kv_len - 1) + K + 1 = kv_len + K
+                # target_step_out[:, 0, :] = prediction after seeing bonus → verifies draft_token[0]
+                # target_step_out[:, i, :] = prediction after bonus + draft[:i] → verifies draft_token[i]
+                # target_step_out[:, K, :] = bonus logit for all-accepted
+
+                # Verification logits (K logits)
+                target_verify = target_step_out[:, :K, :]  # (batch, K, vocab)
+
+                # Bonus logit for the all-accepted case
+                bonus_logits = target_step_out[:, K:K+1, :]  # (batch, 1, vocab)
 
             if profile:
                 metrics.verify_time += time.perf_counter() - _t0
@@ -153,53 +197,55 @@ def speculative_decode(
                 metrics.sampling_time += time.perf_counter() - _t0
 
             # === COLLECT TOKENS ===
-            for i in range(n_acc):
-                generated.append(draft_tokens[:, i:i+1])
+            if n_acc > 0:
+                generated.append(draft_tokens[:, :n_acc])
             generated.append(bonus_tokens[:1].unsqueeze(1))
+            n_generated += n_acc + 1
 
             # === KV CACHE CLEANUP ===
             if profile:
                 _t0 = time.perf_counter()
-
-            # Goal: restore invariant — both caches at kv_len + n_acc + 1,
-            # with logits for the next position.
 
             # If all K accepted, draft_kv is missing draft_token[K-1]; forward it
             if n_acc == K:
                 _, draft_kv = draft_model.forward(
                     draft_tokens[:, K-1:K], past_key_values=draft_kv
                 )
-                # draft_kv now at kv_len + K (same as target_kv)
+                # draft_kv now at kv_len + K
 
-            # Trim both caches to kv_len + n_acc (context through last accepted token)
+            # Trim both caches:
+            # - target_kv from kv_len + K to kv_len + n_acc
+            # - draft_kv from kv_len + K - 1 (or K if all accepted) to kv_len + n_acc
             trim_to = kv_len + n_acc
             target_kv = trim_kv_cache(target_kv, trim_to)
             draft_kv = trim_kv_cache(draft_kv, trim_to)
 
-            # Forward bonus token through both models to update caches and get next logits
+            # Forward bonus through draft only (target deferred to next verify)
             bonus_input = bonus_tokens[:1].unsqueeze(1)  # (batch, 1)
-            target_bonus_out, target_kv = target_model.forward(
-                bonus_input, past_key_values=target_kv
-            )
             draft_bonus_out, draft_kv = draft_model.forward(
                 bonus_input, past_key_values=draft_kv
             )
 
             # Update state
-            next_target_logit = target_bonus_out[:, -1:, :]
+            # target_kv stays at kv_len + n_acc (one behind draft)
             next_draft_logit = draft_bonus_out[:, -1:, :]
-            kv_len = trim_to + 1  # = kv_len + n_acc + 1
+            pending_bonus = bonus_tokens
+            kv_len = trim_to + 1  # = kv_len + n_acc + 1 (draft's kv_len)
 
             if profile:
                 metrics.overhead_time += time.perf_counter() - _t0
 
     metrics.latency_seconds = timer.elapsed
-    metrics.total_tokens = len(generated)
+    metrics.total_tokens = n_generated
     metrics.peak_memory_mb = get_peak_memory_mb()
 
     # Build output
     if generated:
-        all_generated = torch.cat(generated[:max_new_tokens], dim=1)
+        all_generated = torch.cat(generated, dim=1)
+        # Trim to exactly max_new_tokens
+        if all_generated.shape[1] > max_new_tokens:
+            all_generated = all_generated[:, :max_new_tokens]
+            metrics.total_tokens = max_new_tokens
         output_ids = torch.cat([input_ids, all_generated], dim=1)
     else:
         output_ids = input_ids
